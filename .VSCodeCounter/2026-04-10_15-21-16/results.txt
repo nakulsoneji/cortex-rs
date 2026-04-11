@@ -1,0 +1,58 @@
+Date : 2026-04-10 15:21:16
+Directory : /Users/nakulsoneji/projects/lin
+Total : 25 files,  1513 codes, 36 comments, 231 blanks, all 1780 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| Rust     |         23 |      1,360 |         34 |        210 |      1,604 |
+| TOML     |          2 |        153 |          2 |         21 |        176 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++---------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                                | files      | code       | comment    | blank      | total      |
++---------------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                                   |         25 |      1,513 |         36 |        231 |      1,780 |
+| . (Files)                                                           |          2 |        153 |          2 |         21 |        176 |
+| src                                                                 |         23 |      1,360 |         34 |        210 |      1,604 |
+| src (Files)                                                         |          3 |         26 |          4 |          4 |         34 |
+| src/linalg                                                          |         20 |      1,334 |         30 |        206 |      1,570 |
+| src/linalg (Files)                                                  |          2 |         56 |          0 |         19 |         75 |
+| src/linalg/common                                                   |          3 |        392 |         22 |         43 |        457 |
+| src/linalg/matrix                                                   |          8 |        651 |          8 |        100 |        759 |
+| src/linalg/vector                                                   |          7 |        235 |          0 |         44 |        279 |
++---------------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++---------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                            | language | code       | comment    | blank      | total      |
++---------------------------------------------------------------------+----------+------------+------------+------------+------------+
+| /Users/nakulsoneji/projects/lin/Cargo.lock                          | TOML     |        143 |          2 |         19 |        164 |
+| /Users/nakulsoneji/projects/lin/Cargo.toml                          | TOML     |         10 |          0 |          2 |         12 |
+| /Users/nakulsoneji/projects/lin/src/lib.rs                          | Rust     |          4 |          0 |          0 |          4 |
+| /Users/nakulsoneji/projects/lin/src/linalg/common/dot.rs            | Rust     |        124 |          6 |         18 |        148 |
+| /Users/nakulsoneji/projects/lin/src/linalg/common/mod.rs            | Rust     |         29 |          0 |          3 |         32 |
+| /Users/nakulsoneji/projects/lin/src/linalg/common/ops.rs            | Rust     |        239 |         16 |         22 |        277 |
+| /Users/nakulsoneji/projects/lin/src/linalg/errors.rs                | Rust     |         50 |          0 |         19 |         69 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/core.rs           | Rust     |         77 |          0 |         17 |         94 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/decompositions.rs | Rust     |        151 |          5 |         24 |        180 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/from.rs           | Rust     |         21 |          0 |          6 |         27 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/index.rs          | Rust     |         29 |          0 |          3 |         32 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/macros.rs         | Rust     |         23 |          0 |          5 |         28 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/math.rs           | Rust     |        141 |          3 |         26 |        170 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/mod.rs            | Rust     |         30 |          0 |          6 |         36 |
+| /Users/nakulsoneji/projects/lin/src/linalg/matrix/reductions.rs     | Rust     |        179 |          0 |         13 |        192 |
+| /Users/nakulsoneji/projects/lin/src/linalg/mod.rs                   | Rust     |          6 |          0 |          0 |          6 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/core.rs           | Rust     |         44 |          0 |         11 |         55 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/from.rs           | Rust     |         42 |          0 |          9 |         51 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/index.rs          | Rust     |         23 |          0 |          3 |         26 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/macros.rs         | Rust     |          6 |          0 |          0 |          6 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/math.rs           | Rust     |         57 |          0 |         11 |         68 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/mod.rs            | Rust     |         24 |          0 |          4 |         28 |
+| /Users/nakulsoneji/projects/lin/src/linalg/vector/reductions.rs     | Rust     |         39 |          0 |          6 |         45 |
+| /Users/nakulsoneji/projects/lin/src/main.rs                         | Rust     |         18 |          4 |          4 |         26 |
+| /Users/nakulsoneji/projects/lin/src/prelude.rs                      | Rust     |          4 |          0 |          0 |          4 |
+| Total                                                               |          |      1,513 |         36 |        231 |      1,780 |
++---------------------------------------------------------------------+----------+------------+------------+------------+------------+
