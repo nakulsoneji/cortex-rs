@@ -1,1 +1,9 @@
-/target
+# VSCode
+.vscode/
+.VSCodeCounter/
+
+# Rust
+target/
+
+# Mac
+.DS_Store

@@ -1,4 +1,4 @@
-use lin::prelude::*;
+use rawml::prelude::*;
 
 fn main() {
     test_decompositions();
@@ -39,7 +39,7 @@ fn test_decompositions() {
         let a = Matrix::new(vec![2.0, 1.0, 1.0, 3.0], [2, 2]);
         let lu = a.lu().expect("lu failed");
 
-        let reconstructed = lu.l.dot(&lu.u);
+        let reconstructed: Matrix = lu.l.dot(&lu.u);
         assert_approx(unsafe { *lu.l.get_unchecked(0, 0) }, 1.0, 1e-5, "L diagonal 0");
         assert_approx(unsafe { *lu.l.get_unchecked(1, 1) }, 1.0, 1e-5, "L diagonal 1");
         assert_approx(unsafe { *lu.l.get_unchecked(0, 1) }, 0.0, 1e-5, "L upper zero");

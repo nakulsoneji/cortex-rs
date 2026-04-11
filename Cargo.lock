@@ -79,17 +79,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "48f5d2a454e16a5ea0f4ced81bd44e4cfc7bd3a507b61887c99fd3538b28e4af"
 
 [[package]]
-name = "lin"
-version = "0.1.0"
-dependencies = [
- "blas",
- "blas-src",
- "lapack",
- "lapack-src",
- "thiserror",
-]
-
-[[package]]
 name = "num-complex"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -123,6 +112,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "41f2619966050689382d2b44f664f4bc593e129785a36d6ee376ddf37259b924"
 dependencies = [
  "proc-macro2",
+]
+
+[[package]]
+name = "rawml"
+version = "0.1.0"
+dependencies = [
+ "blas",
+ "blas-src",
+ "lapack",
+ "lapack-src",
+ "thiserror",
 ]
 
 [[package]]
