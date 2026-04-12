@@ -7,6 +7,7 @@ pub mod decompositions;
 pub mod reductions;
 pub mod math;
 pub mod slice;
+pub mod ops;
 
 use std::sync::Arc;
 

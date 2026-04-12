@@ -11,37 +11,38 @@ impl Matrix {
             .collect::<Vec<f32>>();
         Vector::from(data)
     }
-
-    pub fn try_map_col<F: Fn(f32) -> f32>(&mut self, c: usize, f: F) -> LinAlgResult<()> {
-        let [rows, cols] = self.shape;
-        if c >= cols {
-            return Err(ValidationError::MatrixIndexOutOfBounds {
-                row: 0, col: c, rows, cols,
-            }.into());
-        }
-        unsafe { self.map_col_unchecked(c, f) };
-        Ok(())
+    pub fn col_iter_mut(&mut self, c: usize) -> impl Iterator<Item = &mut f32> {
+        assert!(c < self.shape[1], "{}", ValidationError::MatrixIndexOutOfBounds {
+            row: 0, col: c, rows: self.shape[0], cols: self.shape[1],
+        });
+        let rows = self.shape[0];
+        let row_stride = self.strides[0]; // stride between rows
+        let col_stride = self.strides[1]; // stride between cols
+        let start = c * col_stride;       // start of this column
+        let data = self.data_mut();
+        (0..rows).map(move |r| unsafe { &mut *data.as_mut_ptr().add(start + r * row_stride) })
     }
 
-    pub fn try_map_row<F: Fn(f32) -> f32>(&mut self, r: usize, f: F) -> LinAlgResult<()> {
-        let [rows, cols] = self.shape;
-        if r >= rows {
-            return Err(ValidationError::MatrixIndexOutOfBounds {
-                row: r, col: 0, rows, cols,
-            }.into());
-        }
-        unsafe { self.map_row_unchecked(r, f) };
-        Ok(())
+    pub fn row_iter_mut(&mut self, r: usize) -> impl Iterator<Item = &mut f32> {
+        assert!(r < self.shape[0], "{}", ValidationError::MatrixIndexOutOfBounds {
+            row: r, col: 0, rows: self.shape[0], cols: self.shape[1],
+        });
+        let cols = self.shape[1];
+        let col_stride = self.strides[1]; // stride between cols
+        let row_stride = self.strides[0]; // stride between rows
+        let start = r * row_stride;       // start of this row
+        let data = self.data_mut();
+        (0..cols).map(move |c| unsafe { &mut *data.as_mut_ptr().add(start + c * col_stride) })
     }
 
-    pub fn map_col<F: Fn(f32) -> f32>(&mut self, c: usize, f: F) {
-        self.try_map_col(c, f).unwrap_or_else(|e| panic!("{}", e));
+    pub fn apply_col<F: Fn(f32) -> f32>(&mut self, c: usize, f: F) {
+        self.col_iter_mut(c).for_each(|x| *x = f(*x));
     }
 
-    pub fn map_row<F: Fn(f32) -> f32>(&mut self, r: usize, f: F) {
-        self.try_map_row(r, f).unwrap_or_else(|e| panic!("{}", e));
+    pub fn apply_row<F: Fn(f32) -> f32>(&mut self, r: usize, f: F) {
+        self.row_iter_mut(r).for_each(|x| *x = f(*x));
     }
-
+    
     pub fn row(&self, r: usize) -> Vector {
         assert!(r < self.shape[0], "{}", ValidationError::MatrixIndexOutOfBounds {
             row: r, col: 0,
@@ -173,15 +174,11 @@ impl Matrix {
         }
     }
 
-    pub unsafe fn map_col_unchecked<F: Fn(f32) -> f32>(&mut self, c: usize, f: F) {
-        for r in 0..self.shape[0] {
-            unsafe { *self.get_unchecked_mut(r, c) = f(*self.get_unchecked(r, c)) };
-        }
+    pub fn map_col<F: Fn(f32) -> f32>(&self, c: usize, f: F) -> Vector {
+        Vector::from(self.col_iter(c).map(f).collect::<Vec<f32>>())
     }
 
-    pub unsafe fn map_row_unchecked<F: Fn(f32) -> f32>(&mut self, r: usize, f: F) {
-        for c in 0..self.shape[1] {
-            unsafe { *self.get_unchecked_mut(r, c) = f(*self.get_unchecked(r, c)) };
-        }
+    pub fn map_row<F: Fn(f32) -> f32>(&self, r: usize, f: F) -> Vector {
+        Vector::from(self.row_iter(r).map(f).collect::<Vec<f32>>())
     }
 }

@@ -80,6 +80,7 @@ impl Vector {
         });
         self.data_mut().remove(index)
     }
+
 }
 
 impl DataSlice for Vector {

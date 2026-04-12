@@ -5,3 +5,4 @@ pub use crate::ml::LinearModel;
 pub use crate::linalg::common::*;
 pub use crate::linalg::errors::*;
 pub use crate::linalg::common::view::VectorView;
+pub use crate::ml::*;

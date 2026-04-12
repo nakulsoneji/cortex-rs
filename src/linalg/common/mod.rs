@@ -36,6 +36,26 @@ pub trait Dot<T> {
 pub trait Reducible {
     fn reducible_data(&self) -> (&[f32], usize, usize); // (data, stride, len)
 
+    fn mean(&self) -> f32 {
+        let (_, _, len) = self.reducible_data();
+        self.sum() / len as f32
+    }
+
+    fn variance(&self) -> f32 {
+        let (data, stride, len) = self.reducible_data();
+        let mean = self.mean();
+        (0..len)
+            .map(|i| {
+                let v = unsafe { *data.get_unchecked(i * stride) };
+                (v - mean).powi(2)
+            })
+            .sum::<f32>() / len as f32
+    }
+
+    fn std_dev(&self) -> f32 {
+        self.variance().sqrt()
+    }
+
     fn sum(&self) -> f32 {
         let (data, stride, len) = self.reducible_data();
         #[cfg(target_os = "macos")]
@@ -71,14 +91,65 @@ pub trait Reducible {
         #[cfg(not(target_os = "macos"))]
         { (0..len).map(|i| unsafe { *data.get_unchecked(i * stride) }).fold(f32::INFINITY, f32::min) }
     }
+
+    fn normalize_vec(&self) -> Vec<f32> {
+        let (data, stride, len) = self.reducible_data();
+        let min = self.min();
+        let range = self.max() - min;
+        if range == 0.0 {
+            return (0..len).map(|i| unsafe { *data.get_unchecked(i * stride) }).collect();
+        }
+        (0..len).map(|i| {
+            let v = unsafe { *data.get_unchecked(i * stride) };
+            (v - min) / range
+        }).collect()
+    }
+
+    fn standardize_vec(&self) -> Vec<f32> {
+        let (data, stride, len) = self.reducible_data();
+        let mean = self.mean();
+        let std = self.std_dev();
+        if std == 0.0 {
+            return (0..len).map(|i| unsafe { *data.get_unchecked(i * stride) }).collect();
+        }
+        (0..len).map(|i| {
+            let v = unsafe { *data.get_unchecked(i * stride) };
+            (v - mean) / std
+        }).collect()
+    }
 }
 
-pub trait DataSlice {
+pub trait DataSlice : Reducible {
     fn as_slice(&self) -> &[f32];
     fn stride(&self) -> usize { 1 } // default stride 1 for contiguous
     fn len(&self) -> usize;
     fn is_empty(&self) -> bool { self.len() == 0 }
-    
+
+    fn normalize(&self) -> Vector {
+        Vector::from(self.normalize_vec())
+    }
+
+    fn standardize(&self) -> Vector {
+        Vector::from(self.standardize_vec())
+    }
+    fn outer(&self, other: &impl DataSlice) -> Matrix {
+        let m = self.len() as i32;
+        let n = other.len() as i32;
+        let mut data = vec![0.0f32; (m * n) as usize];
+
+        unsafe {
+            blas::sger(
+                m, n,
+                1.0,
+                self.as_slice(), self.stride() as i32,
+                other.as_slice(), other.stride() as i32,
+                &mut data, m,
+            );
+        }
+
+        Matrix::new_with_strides(data, [m as usize, n as usize], [1, m as usize])
+    }
+
     fn argmax_with_val(&self) -> (usize, f32) {
         assert!(!self.is_empty());
         #[cfg(target_os = "macos")]

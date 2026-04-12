@@ -5,6 +5,7 @@ pub mod from;
 pub mod core;
 pub mod math;
 pub mod reductions;
+pub mod ops;
 
 use std::sync::Arc;
 

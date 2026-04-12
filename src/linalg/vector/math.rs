@@ -1,17 +1,6 @@
 use crate::prelude::*;
 
 impl Vector {
-    pub fn sum(&self) -> f32 {
-        let ones = vec![1.0; self.len()];
-        unsafe {
-            blas::sdot(
-                self.len() as i32,
-                &self.data, 1,
-                &ones, 1,
-            )
-        }
-    }
-
     pub fn abs_sum(&self) -> f32 {
         unsafe {
             blas::sasum(

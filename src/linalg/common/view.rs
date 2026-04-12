@@ -45,18 +45,20 @@ impl<'a> VectorView<'a> {
     }
 }
 
+impl<'a, T: DataSlice + Reducible> DataSlice for &'a T {
+    fn as_slice(&self) -> &[f32] { (*self).as_slice() }
+    fn stride(&self) -> usize { (*self).stride() }
+    fn len(&self) -> usize { (*self).len() }
+}
 
+impl<'a, T: Reducible> Reducible for &'a T {
+    fn reducible_data(&self) -> (&[f32], usize, usize) { (*self).reducible_data() }
+}
 
 impl<'a> DataSlice for VectorView<'a> {
     fn as_slice(&self) -> &[f32] { self.data }
     fn stride(&self) -> usize { self.stride }
     fn len(&self) -> usize { self.len }
-}
-
-impl<'a, T: DataSlice> DataSlice for &'a T {
-    fn as_slice(&self) -> &[f32] { (*self).as_slice() }
-    fn stride(&self) -> usize { (*self).stride() }
-    fn len(&self) -> usize { (*self).len() }
 }
 
 impl<'a> Reducible for VectorView<'a> {

@@ -1,5 +1,5 @@
 [package]
-name = "rawml"
+name = "cortex"
 version = "0.1.0"
 edition = "2024"
 
@@ -8,4 +8,6 @@ blas = { version = "0.23.0" }
 blas-src = { version = "0.14.0", features = [ "accelerate" ] }
 lapack = "0.20.0"
 lapack-src = { version = "0.13.0", features = [ "accelerate" ] }
+rand = "0.10.1"
+rand_distr = "0.6.0"
 thiserror = "2.0.18"
