@@ -1,69 +1,106 @@
 use cortex::prelude::*;
+use cortex::data::mnist::load_mnist;
+use rand::seq::SliceRandom;
+
+
+fn check_ops() {
+    // row-major + col-major
+    let a = Matrix::new(vec![1.0, 2.0, 3.0, 4.0], [2, 2]);
+    let b = Matrix::new(vec![1.0, 2.0, 3.0, 4.0], [2, 2]).transpose();
+    let mut c = a.clone();
+    c += &b;
+    assert!((unsafe { *c.get_unchecked(0, 0) } - 2.0).abs() < 1e-5, "row+col (0,0)");
+    assert!((unsafe { *c.get_unchecked(0, 1) } - 5.0).abs() < 1e-5, "row+col (0,1)");
+    assert!((unsafe { *c.get_unchecked(1, 0) } - 5.0).abs() < 1e-5, "row+col (1,0)");
+    assert!((unsafe { *c.get_unchecked(1, 1) } - 8.0).abs() < 1e-5, "row+col (1,1)");
+    println!("✓ row-major + col-major");
+
+    // outer product accumulation
+    let delta = Vector::from(vec![1.0, 2.0]);
+    let input = Vector::from(vec![3.0, 4.0, 5.0]);
+    let dw = delta.outer(&input);
+    // expected [2x3]: [[3,4,5],[6,8,10]]
+    assert!((unsafe { *dw.get_unchecked(0, 0) } - 3.0).abs() < 1e-5, "outer (0,0)");
+    assert!((unsafe { *dw.get_unchecked(0, 1) } - 4.0).abs() < 1e-5, "outer (0,1)");
+    assert!((unsafe { *dw.get_unchecked(1, 0) } - 6.0).abs() < 1e-5, "outer (1,0)");
+    assert!((unsafe { *dw.get_unchecked(1, 1) } - 8.0).abs() < 1e-5, "outer (1,1)");
+    println!("✓ outer product");
+
+    // outer product += row-major accumulator
+    let mut acc = Matrix::zeros([2, 3]);
+    acc += &dw;
+    assert!((unsafe { *acc.get_unchecked(0, 0) } - 3.0).abs() < 1e-5, "acc (0,0)");
+    assert!((unsafe { *acc.get_unchecked(1, 1) } - 8.0).abs() < 1e-5, "acc (1,1)");
+    println!("✓ outer product accumulation");
+
+    // scalar ops on col-major
+    let mut m = Matrix::new(vec![1.0, 2.0, 3.0, 4.0], [2, 2]).transpose();
+    m *= 2.0;
+    assert!((unsafe { *m.get_unchecked(0, 0) } - 2.0).abs() < 1e-5, "scalar mul col-major (0,0)");
+    assert!((unsafe { *m.get_unchecked(0, 1) } - 6.0).abs() < 1e-5, "scalar mul col-major (0,1)");
+    println!("✓ scalar ops on col-major");
+
+    println!("✓ all ops checks passed");
+}
+
 
 fn main() {
-    // same data as tensorflow example
-    let inputs = vec![
-        Vector::from(vec![ 1.0,  1.0]),
-        Vector::from(vec![-1.0,  1.0]),
-        Vector::from(vec![-1.0, -1.0]),
-        Vector::from(vec![ 1.0, -1.0]),
-        Vector::from(vec![ 2.0,  2.0]),
-        Vector::from(vec![-2.0,  2.0]),
-        Vector::from(vec![-2.0, -2.0]),
-        Vector::from(vec![ 2.0, -2.0]),
-    ];
-
-    // one-hot encoded targets
-    let targets = vec![
-        Vector::from(vec![1.0, 0.0, 0.0, 0.0]), // Q1
-        Vector::from(vec![0.0, 1.0, 0.0, 0.0]), // Q2
-        Vector::from(vec![0.0, 0.0, 1.0, 0.0]), // Q3
-        Vector::from(vec![0.0, 0.0, 0.0, 1.0]), // Q4
-        Vector::from(vec![1.0, 0.0, 0.0, 0.0]), // Q1
-        Vector::from(vec![0.0, 1.0, 0.0, 0.0]), // Q2
-        Vector::from(vec![0.0, 0.0, 1.0, 0.0]), // Q3
-        Vector::from(vec![0.0, 0.0, 0.0, 1.0]), // Q4
-    ];
+    check_ops();
+    println!("Loading MNIST...");
+    let (x_train, y_train, x_test, y_test) = load_mnist();
+    println!("train: {}x{} test: {}x{}",
+        x_train.shape[0], x_train.shape[1],
+        x_test.shape[0], x_test.shape[1]);
 
     let mut net = FeedForward::new(
         vec![
-            Layer::new(2, 8, Activation::ReLU),
-            Layer::new(8, 4, Activation::Softmax),
+            Layer::new(784, 128, Activation::LeakyReLU(0.01)),
+            Layer::new(128, 64, Activation::LeakyReLU(0.01)),
+            Layer::new(64, 10, Activation::Softmax),
         ],
         Loss::CrossEntropy,
         Optimizer::adam(0.001),
-    );
+    ).with_batch_size(32);
 
-    for epoch in 0..1000 {
+    let epochs = 10;
+
+    for epoch in 0..epochs {
+        let n_train = x_train.shape[0];
+        let batch_size = net.batch_size;
+
+        let mut indices: Vec<usize> = (0..n_train).collect();
+        indices.shuffle(&mut rand::rng());
+
         let mut total_loss = 0.0;
-        for (x, y) in inputs.iter().zip(targets.iter()) {
-            total_loss += net.train(x, y);
+        let n_batches = n_train / batch_size;
+
+        for batch in 0..n_batches {
+            let mut dw_acc: Vec<Matrix> = net.layers.iter()
+                .map(|l| Matrix::zeros(l.weights.shape))
+                .collect();
+            let mut db_acc: Vec<Vector> = net.layers.iter()
+                .map(|l| Vector::from(vec![0.0f32; l.bias.len()]))
+                .collect();
+
+            let mut batch_loss = 0.0;
+            for j in 0..batch_size {
+                let i = indices[batch * batch_size + j];
+                let input = x_train.row(i);
+                let target = y_train.row(i);
+                batch_loss += net.accumulate(&input, &target, &mut dw_acc, &mut db_acc);
+            }
+
+            net.apply_gradients(&mut dw_acc, &mut db_acc, batch_size);
+            total_loss += batch_loss / batch_size as f32;
+
+            if batch % 200 == 0 {
+                println!("  epoch {:>2} [{:>6}/{}] loss = {:.4}",
+                    epoch, batch * batch_size, n_train, total_loss / (batch + 1) as f32);
+            }
         }
-        if epoch % 10 == 0 {
-            println!("epoch {:>3}: loss = {:.6}", epoch, total_loss / inputs.len() as f32);
-        }
+
+    let accuracy = net.accuracy(&x_test, &y_test);
+    println!("epoch {:>2}: loss = {:.4} test_acc = {:.2}%",
+        epoch, total_loss / n_batches as f32, accuracy);
     }
-
-    println!("\n=== Results ===");
-    let quadrant_names = ["Q1", "Q2", "Q3", "Q4"];
-    let mut correct = 0;
-
-    for (x, y) in inputs.iter().zip(targets.iter()) {
-        let output = net.predict(x);
-        let predicted = output.argmax();
-        let actual = y.argmax();
-        if predicted == actual { correct += 1; }
-        println!(
-            "input: [{:>5.1}, {:>5.1}] → predicted: {} actual: {} {}",
-            unsafe { *x.get_unchecked(0) },
-            unsafe { *x.get_unchecked(1) },
-            quadrant_names[predicted],
-            quadrant_names[actual],
-            if predicted == actual { "✓" } else { "✗" }
-        );
-    }
-
-    println!("\nAccuracy: {}/{}", correct, inputs.len());
-    assert_eq!(correct, inputs.len(), "expected 100% accuracy");
-    println!("✓ quadrant classification works");
 }

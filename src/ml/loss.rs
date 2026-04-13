@@ -16,7 +16,7 @@ impl Loss {
             Loss::CrossEntropy => {
                 let eps = 1e-7f32;
                 actual.iter().zip(predicted.iter())
-                    .map(|(a, p)| -a * (p + eps).ln() - (1.0 - a) * (1.0 - p + eps).ln())
+                    .map(|(a, p)| -a * (p + eps).ln())
                     .sum::<f32>()
             }
         }

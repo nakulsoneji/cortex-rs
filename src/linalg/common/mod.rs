@@ -20,6 +20,8 @@ pub trait LinearStorage {
         Arc::make_mut(self.data_arc_mut())
     }
     fn len(&self) -> usize;
+    fn strides(&self) -> [usize; 2] { [1, 1] }
+    fn shape(&self) -> [usize; 2] { [self.len(), 1] }
     fn assert_same_shape(&self, other: &Self);
 }
 

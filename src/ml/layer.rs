@@ -8,9 +8,9 @@ pub struct Layer {
     pub bias: Vector,
     pub activation: Activation,
 
-    input: Vector,
-    z: Vector,
-    a: Vector,
+    pub(crate) input: Vector,
+    pub(crate) z: Vector,
+    pub(crate) a: Vector,
 }
 
 
@@ -28,10 +28,9 @@ impl Layer {
         let z = self.weights.dot(input) + &self.bias;
         self.activation.apply(&z)
     }
-
-    pub fn backward(&mut self, delta: &Vector, grad_clip: Option<f32>) -> (Matrix, Vector, Vector) {
+    pub fn compute_gradients(&self, delta: &Vector, grad_clip: Option<f32>) -> (Matrix, Vector, Vector) {
         let act_deriv = self.activation.derivative(&self.z);
-        let mut delta = delta * act_deriv;
+        let mut delta = delta * act_deriv.clone();
 
         if let Some(clip) = grad_clip {
             delta.clip_inplace(-clip, clip);
@@ -44,15 +43,21 @@ impl Layer {
         (dw, db, prev_delta)
     }
 
+    pub fn backward(&mut self, delta: &Vector, grad_clip: Option<f32>) -> (Matrix, Vector, Vector) {
+        let (dw, db, prev_delta) = self.compute_gradients(delta, grad_clip);
+        // note: don't apply here — let FeedForward::backward handle it
+        (dw, db, prev_delta)
+    }
+
     pub fn new(input_size: usize, output_size: usize, activation: Activation) -> Self {
         let std_dev = match activation {
-            Activation::ReLU => (2.0 / input_size as f32).sqrt(),        // He
+            Activation::ReLU | Activation::LeakyReLU(_) => (2.0 / input_size as f32).sqrt(),
             _ => (2.0 / (input_size + output_size) as f32).sqrt(),       // Xavier
         };
 
         let normal = Normal::new(0.0f32, std_dev).unwrap();
-        //let mut rng = rand::rng();
-        let mut rng = rand::rngs::SmallRng::seed_from_u64(42);
+        let mut rng = rand::rng();
+        // let mut rng = rand::rngs::SmallRng::seed_from_u64(42);
 
         let weights = Matrix::new(
             (0..input_size * output_size)

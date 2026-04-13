@@ -59,8 +59,6 @@ impl LinearModel {
             );
         }
 
-        println!("{:?}", x.pseudo_inv()?.dot(y));
-
         match info {
             0 => Ok(Self { weights: Vector::from(b[..n as usize].to_vec()) }),
             _ => Err(DecompositionError::ConvergenceFailed { iterations: 0 }.into()),

@@ -9,6 +9,7 @@ pub struct FeedForward {
     pub optimizer: Optimizer,
     pub weight_clip: Option<f32>,  // None = no clipping, Some(v) = clip to [-v, v]
     pub grad_clip: Option<f32>,
+    pub batch_size: usize
 }
 
 

@@ -199,6 +199,8 @@ impl Matrix {
 
 
 impl LinearStorage for Matrix {
+    fn strides(&self) -> [usize; 2] { self.strides }
+    fn shape(&self) -> [usize; 2] { self.shape }
     fn data_arc(&self) -> &Arc<Vec<f32>> { &self.data }
     fn data_arc_mut(&mut self) -> &mut Arc<Vec<f32>> { &mut self.data }
     fn len(&self) -> usize { self.data.len() }

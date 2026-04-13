@@ -3,7 +3,7 @@ use self::error::*;
 pub type CsvMatrixResult<T> = Result<T, CsvMatrixError>;
 
 pub mod error;
-
+pub mod mnist;
 
 pub fn csv_to_matrix(path: &str) -> Matrix {
     try_csv_to_matrix(path).expect("csv_to_matrix failed")
