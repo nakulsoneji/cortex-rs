@@ -175,27 +175,3 @@ cargo run --release
 ```
 
 The default executable includes operator checks plus an end-to-end MNIST training workflow.
-
-## Performance Notes
-
-- Performance-critical paths are delegated to BLAS/LAPACK kernels.
-- macOS builds use Apple Accelerate-backed routines.
-- Core compute benefits from mature low-level native code (Fortran/C++/assembly) underneath the Rust API.
-- The codebase focuses on balancing speed, clarity, and full-stack ownership.
-
-## Engineering Goals
-
-- Keep the numerics path fast and transparent
-- Keep the ML stack understandable and hackable
-- Keep the architecture modular for extension
-
-## Future Work
-
-- More decomposition/solver variants
-- Expanded benchmarking and profiling harnesses
-- Additional layer types and training utilities
-- Serialization and model export tooling
-
-## License
-
-Add a license file and update this section with the selected license.
