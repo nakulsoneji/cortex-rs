@@ -1,4 +1,4 @@
-# Cortex (rawml)
+# Cortex
 
 Cortex is a full-stack machine learning project in Rust that implements core linear algebra and neural network training from the ground up.
 
