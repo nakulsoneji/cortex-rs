@@ -1,6 +1,5 @@
 use crate::{ml::activation::Activation, prelude::*};
 use rand_distr::{Distribution, Normal};
-use rand::SeedableRng;
 
 #[derive(Debug, Clone)]
 pub struct Layer {

@@ -11,63 +11,100 @@ unsafe extern "C" {
     fn vDSP_vdiv(__B: *const f32, __IB: i64, __A: *const f32, __IA: i64, __C: *mut f32, __IC: i64, __N: u64);
 }
 
+// ============================================================
+// Core helpers
+// ============================================================
+
 #[inline]
-fn axpy_assign<T: LinearStorage>(lhs: &mut T, rhs: &T, alpha: f32) {
-    lhs.assert_same_shape(rhs);
+fn is_contiguous(strides: [usize; 2]) -> bool {
+    strides[0] == 1 || strides[1] == 1
+}
+
+ #[inline]
+fn for_each_row_binary<T: LinearStorage>(
+    lhs: &mut T,
+    rhs_data: &[f32],
+    rhs_strides: [usize; 2],
+    f_fast: impl Fn(*mut f32, *const f32, u64),
+    f_strided: impl Fn(*mut f32, i64, *const f32, i64, u64),
+) {
     let [rows, cols] = lhs.shape();
     let lhs_strides = lhs.strides();
-    let rhs_strides = rhs.strides();
-    let rhs_data = rhs.data_arc().clone();
     let data = lhs.data_mut();
 
-    // fast path — both row-major contiguous
-    if lhs_strides[1] == 1 && rhs_strides[1] == 1 {
-        let n = (rows * cols) as i32;
-        #[cfg(target_os = "macos")]
-        unsafe {
-            if alpha == 1.0 {
-                vDSP_vadd(rhs_data.as_ptr(), 1, data.as_ptr(), 1, data.as_mut_ptr(), 1, n as u64);
-            } else if alpha == -1.0 {
-                vDSP_vsub(rhs_data.as_ptr(), 1, data.as_ptr(), 1, data.as_mut_ptr(), 1, n as u64);
-            } else {
-                blas::saxpy(n, alpha, &rhs_data, 1, data, 1);
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        unsafe { blas::saxpy(n, alpha, &rhs_data, 1, data, 1); }
+    // fast path — identical strides (same layout)
+    if lhs_strides == rhs_strides {
+        f_fast(data.as_mut_ptr(), rhs_data.as_ptr(), (rows * cols) as u64);
         return;
     }
 
-    // strided path — vDSP/saxpy per row with correct strides
+    // strided path — different layouts
     for r in 0..rows {
-        let lhs_offset = r * lhs_strides[0];
-        let rhs_offset = r * rhs_strides[0];
-        let n = cols as i32;
-        #[cfg(target_os = "macos")]
-        unsafe {
-            if alpha == 1.0 {
-                vDSP_vadd(
-                    rhs_data[rhs_offset..].as_ptr(), rhs_strides[1] as i64,
-                    data[lhs_offset..].as_ptr(), lhs_strides[1] as i64,
-                    data[lhs_offset..].as_mut_ptr(), lhs_strides[1] as i64,
-                    n as u64,
-                );
-            } else if alpha == -1.0 {
-                vDSP_vsub(
-                    rhs_data[rhs_offset..].as_ptr(), rhs_strides[1] as i64,
-                    data[lhs_offset..].as_ptr(), lhs_strides[1] as i64,
-                    data[lhs_offset..].as_mut_ptr(), lhs_strides[1] as i64,
-                    n as u64,
-                );
-            } else {
-                blas::saxpy(n, alpha, &rhs_data[rhs_offset..], rhs_strides[1] as i32, &mut data[lhs_offset..], lhs_strides[1] as i32);
-            }
-        }
-        #[cfg(not(target_os = "macos"))]
-        unsafe {
-            blas::saxpy(n, alpha, &rhs_data[rhs_offset..], rhs_strides[1] as i32, &mut data[lhs_offset..], lhs_strides[1] as i32);
-        }
+        let lo = r * lhs_strides[0];
+        let ro = r * rhs_strides[0];
+        f_strided(
+            data[lo..].as_mut_ptr(), lhs_strides[1] as i64,
+            rhs_data[ro..].as_ptr(), rhs_strides[1] as i64,
+            cols as u64,
+        );
     }
+}
+
+#[inline]
+fn for_each_row_unary<T: LinearStorage>(
+    lhs: &mut T,
+    f_fast: impl Fn(*mut f32, u64),
+    f_strided: impl Fn(*mut f32, i64, u64),
+) {
+    let [rows, cols] = lhs.shape();
+    let strides = lhs.strides();
+    let data = lhs.data_mut();
+
+    // fast path — always valid for unary since only one matrix
+    if is_contiguous(strides) {
+        f_fast(data.as_mut_ptr(), (rows * cols) as u64);
+        return;
+    }
+
+    // strided path
+    for r in 0..rows {
+        let offset = r * strides[0];
+        f_strided(data[offset..].as_mut_ptr(), strides[1] as i64, cols as u64);
+    }
+}
+
+// ============================================================
+// Operations
+// ============================================================
+
+#[inline]
+fn axpy_assign<T: LinearStorage>(lhs: &mut T, rhs: &T, alpha: f32) {
+    lhs.assert_same_shape(rhs);
+    let rhs_data = rhs.data_arc().clone();
+    let rhs_strides = rhs.strides();
+
+    for_each_row_binary(lhs, &rhs_data, rhs_strides,
+        |d, r, n| unsafe {
+            #[cfg(target_os = "macos")]
+            {
+                if alpha == 1.0 { vDSP_vadd(r, 1, d, 1, d, 1, n); }
+                else if alpha == -1.0 { vDSP_vsub(r, 1, d, 1, d, 1, n); }
+                else { blas::saxpy(n as i32, alpha, std::slice::from_raw_parts(r, n as usize), 1, std::slice::from_raw_parts_mut(d, n as usize), 1); }
+            }
+            #[cfg(not(target_os = "macos"))]
+            blas::saxpy(n as i32, alpha, std::slice::from_raw_parts(r, n as usize), 1, std::slice::from_raw_parts_mut(d, n as usize), 1);
+        },
+        |d, ds, r, rs, n| unsafe {
+            #[cfg(target_os = "macos")]
+            {
+                if alpha == 1.0 { vDSP_vadd(r, rs, d, ds, d, ds, n); }
+                else if alpha == -1.0 { vDSP_vsub(r, rs, d, ds, d, ds, n); }
+                else { blas::saxpy(n as i32, alpha, std::slice::from_raw_parts(r, (n as i64 * rs) as usize), rs as i32, std::slice::from_raw_parts_mut(d, (n as i64 * ds) as usize), ds as i32); }
+            }
+            #[cfg(not(target_os = "macos"))]
+            blas::saxpy(n as i32, alpha, std::slice::from_raw_parts(r, (n as i64 * rs) as usize), rs as i32, std::slice::from_raw_parts_mut(d, (n as i64 * ds) as usize), ds as i32);
+        },
+    );
 }
 
 #[inline]
@@ -78,27 +115,20 @@ fn axpy_sub_assign<T: LinearStorage>(lhs: &mut T, rhs: &T) { axpy_assign(lhs, rh
 
 #[inline]
 fn scalar_add_assign<T: LinearStorage>(lhs: &mut T, alpha: f32) {
-    let [rows, cols] = lhs.shape();
-    let strides = lhs.strides();
-
-    if strides[1] == 1 {
-        let n = (rows * cols) as u64;
-        let data = lhs.data_mut();
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsadd(data.as_ptr(), 1, &alpha, data.as_mut_ptr(), 1, n); }
-        #[cfg(not(target_os = "macos"))]
-        { let ones = vec![1.0f32; rows * cols]; unsafe { blas::saxpy((rows * cols) as i32, alpha, &ones, 1, data, 1); } }
-        return;
-    }
-
-    let data = lhs.data_mut();
-    for r in 0..rows {
-        let offset = r * strides[0];
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsadd(data[offset..].as_ptr(), strides[1] as i64, &alpha, data[offset..].as_mut_ptr(), strides[1] as i64, cols as u64); }
-        #[cfg(not(target_os = "macos"))]
-        { let ones = vec![1.0f32; cols]; unsafe { blas::saxpy(cols as i32, alpha, &ones, 1, &mut data[offset..], strides[1] as i32); } }
-    }
+    for_each_row_unary(lhs,
+        |d, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsadd(d, 1, &alpha, d, 1, n);
+            #[cfg(not(target_os = "macos"))]
+            { let ones = vec![1.0f32; n as usize]; blas::saxpy(n as i32, alpha, &ones, 1, std::slice::from_raw_parts_mut(d, n as usize), 1); }
+        },
+        |d, ds, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsadd(d, ds, &alpha, d, ds, n);
+            #[cfg(not(target_os = "macos"))]
+            { let ones = vec![1.0f32; n as usize]; blas::saxpy(n as i32, alpha, &ones, 1, std::slice::from_raw_parts_mut(d, (n as i64 * ds) as usize), ds as i32); }
+        },
+    );
 }
 
 #[inline]
@@ -106,140 +136,96 @@ fn scalar_sub_assign<T: LinearStorage>(lhs: &mut T, alpha: f32) { scalar_add_ass
 
 #[inline]
 fn scalar_mul_assign<T: LinearStorage>(lhs: &mut T, alpha: f32) {
-    let [rows, cols] = lhs.shape();
-    let strides = lhs.strides();
-
-    if strides[1] == 1 {
-        let n = (rows * cols) as i32;
-        let data = lhs.data_mut();
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsmul(data.as_ptr(), 1, &alpha, data.as_mut_ptr(), 1, n as u64); }
-        #[cfg(not(target_os = "macos"))]
-        unsafe { blas::sscal(n, alpha, data, 1); }
-        return;
-    }
-
-    let data = lhs.data_mut();
-    for r in 0..rows {
-        let offset = r * strides[0];
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsmul(data[offset..].as_ptr(), strides[1] as i64, &alpha, data[offset..].as_mut_ptr(), strides[1] as i64, cols as u64); }
-        #[cfg(not(target_os = "macos"))]
-        unsafe { blas::sscal(cols as i32, alpha, &mut data[offset..], strides[1] as i32); }
-    }
+    for_each_row_unary(lhs,
+        |d, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsmul(d, 1, &alpha, d, 1, n);
+            #[cfg(not(target_os = "macos"))]
+            blas::sscal(n as i32, alpha, std::slice::from_raw_parts_mut(d, n as usize), 1);
+        },
+        |d, ds, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsmul(d, ds, &alpha, d, ds, n);
+            #[cfg(not(target_os = "macos"))]
+            blas::sscal(n as i32, alpha, std::slice::from_raw_parts_mut(d, (n as i64 * ds) as usize), ds as i32);
+        },
+    );
 }
 
 #[inline]
 fn scalar_div_assign<T: LinearStorage>(lhs: &mut T, alpha: f32) {
     assert_ne!(alpha, 0.0, "{}", ArithmeticError::DivisionByZero);
-    let [rows, cols] = lhs.shape();
-    let strides = lhs.strides();
-
-    if strides[1] == 1 {
-        let n = (rows * cols) as i32;
-        let data = lhs.data_mut();
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsdiv(data.as_ptr(), 1, &alpha, data.as_mut_ptr(), 1, n as u64); }
-        #[cfg(not(target_os = "macos"))]
-        unsafe { blas::sscal(n, 1.0 / alpha, data, 1); }
-        return;
-    }
-
-    let data = lhs.data_mut();
-    for r in 0..rows {
-        let offset = r * strides[0];
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vsdiv(data[offset..].as_ptr(), strides[1] as i64, &alpha, data[offset..].as_mut_ptr(), strides[1] as i64, cols as u64); }
-        #[cfg(not(target_os = "macos"))]
-        unsafe { blas::sscal(cols as i32, 1.0 / alpha, &mut data[offset..], strides[1] as i32); }
-    }
+    for_each_row_unary(lhs,
+        |d, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsdiv(d, 1, &alpha, d, 1, n);
+            #[cfg(not(target_os = "macos"))]
+            blas::sscal(n as i32, 1.0 / alpha, std::slice::from_raw_parts_mut(d, n as usize), 1);
+        },
+        |d, ds, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vsdiv(d, ds, &alpha, d, ds, n);
+            #[cfg(not(target_os = "macos"))]
+            blas::sscal(n as i32, 1.0 / alpha, std::slice::from_raw_parts_mut(d, (n as i64 * ds) as usize), ds as i32);
+        },
+    );
 }
 
 #[inline]
 fn elementwise_mul_assign<T: LinearStorage>(lhs: &mut T, rhs: &T) {
     lhs.assert_same_shape(rhs);
-    let [rows, cols] = lhs.shape();
-    let lhs_strides = lhs.strides();
+    let rhs_data = rhs.data_arc().clone();
     let rhs_strides = rhs.strides();
 
-    if lhs_strides[1] == 1 && rhs_strides[1] == 1 {
-        let n = (rows * cols) as u64;
-        let rhs_data = rhs.data_arc().clone();
-        let data = lhs.data_mut();
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vmul(data.as_ptr(), 1, rhs_data.as_ptr(), 1, data.as_mut_ptr(), 1, n); }
-        #[cfg(not(target_os = "macos"))]
-        { data.iter_mut().zip(rhs_data.iter()).for_each(|(a, b)| *a *= b); }
-        return;
-    }
-
-    let rhs_data = rhs.data_arc().clone();
-    let data = lhs.data_mut();
-    for r in 0..rows {
-        let lhs_offset = r * lhs_strides[0];
-        let rhs_offset = r * rhs_strides[0];
-        #[cfg(target_os = "macos")]
-        unsafe {
-            vDSP_vmul(
-                data[lhs_offset..].as_ptr(), lhs_strides[1] as i64,
-                rhs_data[rhs_offset..].as_ptr(), rhs_strides[1] as i64,
-                data[lhs_offset..].as_mut_ptr(), lhs_strides[1] as i64,
-                cols as u64,
-            );
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            for c in 0..cols {
-                let li = lhs_offset + c * lhs_strides[1];
-                let ri = rhs_offset + c * rhs_strides[1];
-                unsafe { *data.get_unchecked_mut(li) *= *rhs_data.get_unchecked(ri); }
+    for_each_row_binary(lhs, &rhs_data, rhs_strides,
+        |d, r, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vmul(d, 1, r, 1, d, 1, n);
+            #[cfg(not(target_os = "macos"))]
+            std::slice::from_raw_parts_mut(d, n as usize).iter_mut()
+                .zip(std::slice::from_raw_parts(r, n as usize))
+                .for_each(|(a, b)| *a *= b);
+        },
+        |d, ds, r, rs, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vmul(d, ds, r, rs, d, ds, n);
+            #[cfg(not(target_os = "macos"))]
+            for i in 0..n as usize {
+                *d.offset(i as isize * ds as isize) *= *r.offset(i as isize * rs as isize);
             }
-        }
-    }
+        },
+    );
 }
 
 #[inline]
 fn elementwise_div_assign<T: LinearStorage>(lhs: &mut T, rhs: &T) {
     lhs.assert_same_shape(rhs);
-    let [rows, cols] = lhs.shape();
-    let lhs_strides = lhs.strides();
+    let rhs_data = rhs.data_arc().clone();
     let rhs_strides = rhs.strides();
 
-    if lhs_strides[1] == 1 && rhs_strides[1] == 1 {
-        let n = (rows * cols) as u64;
-        let rhs_data = rhs.data_arc().clone();
-        let data = lhs.data_mut();
-        #[cfg(target_os = "macos")]
-        unsafe { vDSP_vdiv(rhs_data.as_ptr(), 1, data.as_ptr(), 1, data.as_mut_ptr(), 1, n); }
-        #[cfg(not(target_os = "macos"))]
-        { data.iter_mut().zip(rhs_data.iter()).for_each(|(a, b)| *a /= b); }
-        return;
-    }
-
-    let rhs_data = rhs.data_arc().clone();
-    let data = lhs.data_mut();
-    for r in 0..rows {
-        let lhs_offset = r * lhs_strides[0];
-        let rhs_offset = r * rhs_strides[0];
-        #[cfg(target_os = "macos")]
-        unsafe {
-            vDSP_vdiv(
-                rhs_data[rhs_offset..].as_ptr(), rhs_strides[1] as i64,
-                data[lhs_offset..].as_ptr(), lhs_strides[1] as i64,
-                data[lhs_offset..].as_mut_ptr(), lhs_strides[1] as i64,
-                cols as u64,
-            );
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            for c in 0..cols {
-                let li = lhs_offset + c * lhs_strides[1];
-                let ri = rhs_offset + c * rhs_strides[1];
-                unsafe { *data.get_unchecked_mut(li) /= *rhs_data.get_unchecked(ri); }
+    for_each_row_binary(lhs, &rhs_data, rhs_strides,
+        |d, r, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vdiv(r, 1, d, 1, d, 1, n);
+            #[cfg(not(target_os = "macos"))]
+            std::slice::from_raw_parts_mut(d, n as usize).iter_mut()
+                .zip(std::slice::from_raw_parts(r, n as usize))
+                .for_each(|(a, b)| *a /= b);
+        },
+        |d, ds, r, rs, n| unsafe {
+            #[cfg(target_os = "macos")]
+            vDSP_vdiv(r, rs, d, ds, d, ds, n);
+            #[cfg(not(target_os = "macos"))]
+            for i in 0..n as usize {
+                *d.offset(i as isize * ds as isize) /= *r.offset(i as isize * rs as isize);
             }
-        }
-    }
+        },
+    );
 }
+
+// ============================================================
+// Macros
+// ============================================================
 
 macro_rules! impl_binary_op {
     ($T:ty, $trait:ident, $method:ident, $assign_trait:ident, $assign_method:ident) => {
@@ -367,10 +353,7 @@ macro_rules! impl_scalar_left_div {
         impl std::ops::Div<$T> for f32 where $T: Clone {
             type Output = $T;
             #[inline]
-            fn div(self, rhs: $T) -> $T {
-                // use map to respect strides
-                rhs.map(|x| self / x)
-            }
+            fn div(self, rhs: $T) -> $T { rhs.map(|x| self / x) }
         }
         impl std::ops::Div<&$T> for f32 where $T: Clone {
             type Output = $T;
